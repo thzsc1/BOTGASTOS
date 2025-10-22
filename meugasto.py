@@ -1,13 +1,31 @@
-
 import os
 import csv
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from flask import Flask
+from threading import Thread
 
-TOKEN = os.getenv("TOKEN")  # <-- defina no Railway (Environment Variables)
+# --- KEEP ALIVE PARA RENDER ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot está ativo no Render!"
+
+def run():
+    app.run(host='0.0.0.0', port=10000)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+keep_alive()
+# --- FIM KEEP ALIVE ---
+
+TOKEN = os.getenv("TOKEN")  # definido nas Environment Variables do Render
 ARQUIVO = "gastos.csv"
-MSG_LIMIT = 3800  # margem para evitar 4096 chars do Telegram
+MSG_LIMIT = 3800  # margem para evitar limite de caracteres do Telegram
 
 # -------- utils --------
 def iniciar_arquivo():
@@ -20,14 +38,13 @@ def iniciar_arquivo():
         pass
 
 def send_em_chunks_factory(send_func):
-    """Retorna uma função que quebra mensagens grandes em partes."""
+    """Evita quebra por limite de caracteres do Telegram."""
     async def _send(text, **kwargs):
         if len(text) <= MSG_LIMIT:
             return await send_func(text, **kwargs)
         start = 0
         while start < len(text):
             end = min(start + MSG_LIMIT, len(text))
-            # evita cortar no meio de uma linha
             if end < len(text):
                 nl = text.rfind("\n", start, end)
                 if nl != -1 and nl > start:
@@ -84,7 +101,7 @@ async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def mes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     send = send_em_chunks_factory(update.message.reply_text)
-    ym = datetime.now().strftime("%Y-%m")   # mês atual YYYY-MM
+    ym = datetime.now().strftime("%Y-%m")
     soma = 0.0
     linhas = []
 
@@ -112,7 +129,6 @@ async def mes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send(texto, parse_mode="Markdown")
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # recria o CSV só com cabeçalhos
     with open(ARQUIVO, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["data", "valor", "descricao"])
@@ -120,7 +136,7 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not TOKEN:
-        raise RuntimeError("Defina a variável de ambiente TOKEN com o token do seu bot.")
+        raise RuntimeError("Defina a variável de ambiente TOKEN no Render.")
     print("Iniciando bot de gastos...")
     iniciar_arquivo()
 
